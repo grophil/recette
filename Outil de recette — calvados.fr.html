@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Outil de recette — calvados.fr</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{--bg:#fff;--fg:#1d2733;--mut:#5b6673;--line:#d5dbe2;--card:#f5f7fa;--pri:#1f3a5f;--priFg:#fff;--ok:#c6efce;--ko:#ffc7ce;--blk:#f4b183;--rt:#ffeb9c;--na:#e0e0e0;--nt:#fff;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14181d;--fg:#e8ecf0;--mut:#9aa6b2;--line:#323b46;--card:#1c222a;--pri:#8fb4e3;--priFg:#10202f;--ok:#25502f;--ko:#6b2630;--blk:#7a4a22;--rt:#6b5a14;--na:#3a3f45;--nt:#14181d;color-scheme:dark}}
+*{box-sizing:border-box}html,body{margin:0}body{background:var(--bg);color:var(--fg);font:14px/1.45 Arial,Helvetica,sans-serif;padding:12px;max-width:1200px;margin:auto}
+h1{font-size:20px;margin:4px 0;color:var(--pri)}p.sub{color:var(--mut);margin:0 0 10px}
+button,select,input,textarea{font:inherit;color:inherit;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+button{cursor:pointer;background:var(--card)}button.pri{background:var(--pri);color:var(--priFg);border-color:var(--pri)}button.del{border-color:#c0392b;color:#c0392b}
+.bar{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;align-items:center}.bar input[type=search]{flex:1 1 200px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:10px 0}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px}.kpi b{display:block;font-size:20px}.kpi span{color:var(--mut);font-size:12px}
+.verdict{font-weight:bold;padding:2px 8px;border-radius:6px}
+.row{border:1px solid var(--line);border-radius:8px;margin:6px 0;background:var(--bg)}
+.head{display:grid;grid-template-columns:70px 1fr 44px 150px 34px;gap:8px;align-items:center;padding:8px;cursor:pointer}
+.head small{color:var(--mut);display:block}.pr{font-weight:bold;text-align:center}.pr.P1{color:#c00000}
+.st{width:100%}.s-OK{background:var(--ok)}.s-KO{background:var(--ko)}.s-Bloqué{background:var(--blk)}.s-À\ retester{background:var(--rt)}.s-Non\ applicable{background:var(--na)}
+.det{display:none;padding:8px 12px 12px;border-top:1px solid var(--line);background:var(--card)}.open .det{display:block}
+.det dt{font-weight:bold;margin-top:8px;color:var(--pri)}.det dd{margin:2px 0;white-space:pre-wrap}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:10px}.grid label{display:block;font-size:12px;color:var(--mut)}.grid input,.grid textarea{width:100%}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-start;justify-content:center;overflow:auto;padding:16px;z-index:9}.ov.on{display:flex}
+.pan{background:var(--bg);border-radius:10px;padding:16px;width:100%;max-width:720px}.pan label{display:block;margin-top:8px;font-size:12px;color:var(--mut)}.pan input,.pan select,.pan textarea{width:100%}
+.empty{padding:30px;text-align:center;color:var(--mut);border:2px dashed var(--line);border-radius:10px}
+@media(max-width:640px){.head{grid-template-columns:56px 1fr 120px 30px}.head .pr{display:none}}
+</style></head><body>
+<h1>Outil de recette — calvados.fr</h1>
+<p class="sub">Importez le cahier (xlsx), exécutez les tests, ajoutez ou supprimez des cas, puis exportez. Les données restent dans ce navigateur : exportez régulièrement pour partager.</p>
+<div class="bar">
+<button class="pri" id="bImp">Importer le cahier (.xlsx / .json)</button>
+<button id="bAdd">+ Ajouter un test</button>
+<button id="bXls">Exporter en .xlsx</button>
+<button id="bJson">Sauvegarde .json</button>
+<button class="del" id="bReset">Tout effacer</button>
+<input type="file" id="file" accept=".xlsx,.xls,.json" hidden>
+</div>
+<div id="kpis" class="kpis"></div>
+<div class="bar">
+<input type="search" id="q" placeholder="Rechercher (ID, fonction, texte…)" aria-label="Rechercher">
+<select id="fd" aria-label="Domaine"></select>
+<select id="fp" aria-label="Priorité"><option value="">Toutes priorités</option><option>P1</option><option>P2</option><option>P3</option></select>
+<select id="fs" aria-label="Statut"></select>
+</div>
+<div id="list"></div>
+<div class="ov" id="ov"><div class="pan" role="dialog" aria-modal="true" aria-labelledby="pt">
+<h2 id="pt" style="margin:0;color:var(--pri)"></h2>
+<label>Domaine<input id="f_dom" list="dl_dom"></label><datalist id="dl_dom"></datalist>
+<label>Préfixe d’ID (pour un nouveau domaine)<input id="f_pre_id" maxlength="5" placeholder="ex. NEW"></label>
+<label>Référence CSF<input id="f_ref"></label>
+<label>Fonction testée<input id="f_fn"></label>
+<label>Priorité<select id="f_prio"><option>P1</option><option selected>P2</option><option>P3</option></select></label>
+<label>Type de test<input id="f_type" list="dl_type"></label><datalist id="dl_type"><option>Fonctionnel</option><option>Responsive</option><option>RGAA</option><option>Éco-conception</option><option>Intégration</option><option>Sécurité</option><option>Contenu/BO</option><option>Performance</option></datalist>
+<label>Profil testeur<input id="f_prof"></label>
+<label>Écran<select id="f_ecran"><option>Desktop</option><option>Mobile</option><option selected>Desktop + Mobile</option></select></label>
+<label>Pré-requis / jeu de données<textarea id="f_pre" rows="2"></textarea></label>
+<label>Étapes<textarea id="f_steps" rows="3"></textarea></label>
+<label>Résultat attendu<textarea id="f_att" rows="3"></textarea></label>
+<p class="bar"><button class="pri" id="fOk">Enregistrer</button><button id="fNo">Annuler</button></p>
+</div></div>
+<script>
+const K=["id","dom","lot","ref","fn","prio","type","prof","ecran","pre","steps","att","st","who","date","env","ano","com"];
+const C=["ID","Domaine","Lot","Réf. CSF","Fonction testée","Prio.","Type de test","Profil testeur","Écran","Pré-requis / jeu de données","Étapes","Résultat attendu","Statut","Testeur","Date","Environnement","N° anomalie","Commentaire"];
+const ST=["Non testé","OK","KO","Bloqué","À retester","Non applicable"];
+const KEY="recette-calvados-v1";let T=[],open=new Set(),edit=null;
+const $=s=>document.querySelector(s),h=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function load(){try{T=JSON.parse(localStorage.getItem(KEY)||"[]")}catch(e){T=[]}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(T))}catch(e){}}
+function fix(t){K.forEach(k=>{if(t[k]==null)t[k]=""});if(!ST.includes(t.st))t.st="Non testé";return t}
+function fromRows(rows){const i=rows.findIndex(r=>String(r[0]).trim()==="ID");if(i<0)throw 0;const hd=rows[i].map(x=>String(x).trim());
+return rows.slice(i+1).filter(r=>String(r[0]||"").trim()).map(r=>{const t={};K.forEach((k,j)=>{const x=hd.indexOf(C[j]);t[k]=x<0?"":String(r[x]??"")});return fix(t)})}
+$("#bImp").onclick=()=>$("#file").click();
+$("#file").onchange=async e=>{const f=e.target.files[0];if(!f)return;try{
+if(/\.json$/i.test(f.name)){T=JSON.parse(await f.text()).map(fix)}
+else{const wb=XLSX.read(await f.arrayBuffer(),{type:"array"});const n=wb.SheetNames.find(s=>/cahier/i.test(s))||wb.SheetNames[0];
+T=fromRows(XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:false,defval:""}))}
+save();open.clear();render()}catch(x){alert("Fichier non reconnu : le cahier doit contenir une ligne d’en-têtes commençant par « ID ».")}e.target.value=""};
+function dl(name,blob){const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+$("#bXls").onclick=()=>{const ws=XLSX.utils.aoa_to_sheet([C,...T.map(t=>K.map(k=>t[k]))]);ws["!cols"]=C.map((c,i)=>({wch:[10,24,9,16,34,7,14,18,12,30,44,52,14,14,12,20,14,34][i]}));
+const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Cahier de recette");XLSX.writeFile(wb,"Cahier_recette_calvados.xlsx")};
+$("#bJson").onclick=()=>dl("recette-calvados.json",new Blob([JSON.stringify(T,null,1)],{type:"application/json"}));
+let armed=false;$("#bReset").onclick=e=>{if(!armed){armed=true;e.target.textContent="Confirmer l’effacement ?";setTimeout(()=>{armed=false;e.target.textContent="Tout effacer"},4000)}else{T=[];save();armed=false;e.target.textContent="Tout effacer";render()}};
+function stats(){const n=T.length,na=T.filter(t=>t.st==="Non applicable").length,nt=T.filter(t=>t.st==="Non testé").length,app=n-na,p=x=>app?Math.round(x/app*100)+" %":"—";
+const ok=T.filter(t=>t.st==="OK").length,ko=T.filter(t=>t.st==="KO").length,p1=T.filter(t=>t.prio==="P1"),p1bad=p1.filter(t=>["KO","Bloqué","À retester"].includes(t.st)).length,p1nt=p1.filter(t=>t.st==="Non testé").length;
+const v=!n?"—":p1bad?"NO GO":p1nt?"EN COURS":"GO (hors anomalies)",vc=v==="NO GO"?"var(--ko)":v==="EN COURS"?"var(--rt)":v==="—"?"var(--card)":"var(--ok)";
+const k=[[n,"cas de test"],[p(n-na-nt),"exécutés"],[p(ok),"OK"],[ko,"KO"],[p1bad,"P1 KO / bloqués / à retester"],[`<span class="verdict" style="background:${vc}">${v}</span>`,"verdict indicatif (tests P1)"]];
+$("#kpis").innerHTML=k.map(x=>`<div class="kpi"><b>${x[0]}</b><span>${x[1]}</span></div>`).join("")}
+function filt(){const q=$("#q").value.toLowerCase(),d=$("#fd").value,p=$("#fp").value,s=$("#fs").value;
+return T.filter(t=>(!d||t.dom===d)&&(!p||t.prio===p)&&(!s||t.st===s)&&(!q||K.some(k=>String(t[k]).toLowerCase().includes(q))))}
+function opts(){const ds=[...new Set(T.map(t=>t.dom))],cur=$("#fd").value;$("#fd").innerHTML='<option value="">Tous les domaines</option>'+ds.map(d=>`<option${d===cur?" selected":""}>${h(d)}</option>`).join("");
+$("#dl_dom").innerHTML=ds.map(d=>`<option value="${h(d)}">`).join("");const cs=$("#fs").value;$("#fs").innerHTML='<option value="">Tous statuts</option>'+ST.map(s=>`<option${s===cs?" selected":""}>${s}</option>`).join("")}
+function render(){opts();stats();const L=filt();if(!T.length){$("#list").innerHTML='<div class="empty">Aucun test chargé. Cliquez sur « Importer le cahier » pour charger Recette_calvados.fr.xlsx, ou sur « Ajouter un test » pour partir de zéro.</div>';return}
+$("#list").innerHTML=`<p class="sub">${L.length} test(s) affiché(s) sur ${T.length}</p>`+L.map(t=>{const i=T.indexOf(t);return `<div class="row${open.has(t.id)?" open":""}" data-i="${i}">
+<div class="head" data-a="tog"><b>${h(t.id)}</b><div>${h(t.fn)}<small>${h(t.dom)} · ${h(t.ref)} · ${h(t.ecran)}</small></div><span class="pr ${h(t.prio)}">${h(t.prio)}</span>
+<select class="st s-${h(t.st)}" data-a="st" aria-label="Statut de ${h(t.id)}">${ST.map(s=>`<option${s===t.st?" selected":""}>${s}</option>`).join("")}</select><span aria-hidden="true">${open.has(t.id)?"▲":"▼"}</span></div>
+<div class="det"><dl><dt>Pré-requis</dt><dd>${h(t.pre)||"—"}</dd><dt>Étapes</dt><dd>${h(t.steps)}</dd><dt>Résultat attendu</dt><dd>${h(t.att)}</dd></dl>
+<div class="grid">${[["who","Testeur"],["date","Date"],["env","Environnement"],["ano","N° anomalie"]].map(([k,l])=>`<label>${l}<input data-f="${k}" value="${h(t[k])}"></label>`).join("")}<label style="grid-column:1/-1">Commentaire<textarea data-f="com" rows="2">${h(t.com)}</textarea></label></div>
+<p class="bar"><button data-a="edit">Modifier ce test</button><button class="del" data-a="del">Supprimer</button></p></div></div>`}).join("")}
+$("#list").addEventListener("click",e=>{const r=e.target.closest(".row");if(!r)return;const t=T[+r.dataset.i],a=e.target.closest("[data-a]")?.dataset.a;
+if(e.target.closest("select,input,textarea"))return;
+if(a==="tog"){open.has(t.id)?open.delete(t.id):open.add(t.id);render()}
+else if(a==="edit")openForm(t);
+else if(a==="del"){const b=e.target;if(b.dataset.arm){T.splice(+r.dataset.i,1);save();render()}else{b.dataset.arm=1;b.textContent="Confirmer la suppression ?"}}});
+$("#list").addEventListener("change",e=>{const r=e.target.closest(".row");if(!r)return;const t=T[+r.dataset.i];
+if(e.target.dataset.a==="st"){t.st=e.target.value;if(t.st!=="Non testé"&&!t.date)t.date=new Date().toLocaleDateString("fr-FR");save();render()}});
+$("#list").addEventListener("input",e=>{const f=e.target.dataset.f;if(f){T[+e.target.closest(".row").dataset.i][f]=e.target.value;save()}});
+["#q","#fd","#fp","#fs"].forEach(s=>$(s).addEventListener("input",render));
+const FF=["dom","ref","fn","prio","type","prof","ecran","pre","steps","att"];
+function openForm(t){edit=t;$("#pt").textContent=t?"Modifier "+t.id:"Ajouter un test";FF.forEach(k=>$("#f_"+k).value=t?t[k]:(k==="prio"?"P2":k==="ecran"?"Desktop + Mobile":""));$("#f_pre_id").value="";opts();$("#ov").classList.add("on");$("#f_fn").focus()}
+$("#bAdd").onclick=()=>openForm(null);$("#fNo").onclick=()=>$("#ov").classList.remove("on");
+document.addEventListener("keydown",e=>{if(e.key==="Escape")$("#ov").classList.remove("on")});
+$("#fOk").onclick=()=>{const v={};FF.forEach(k=>v[k]=$("#f_"+k).value.trim());if(!v.fn||!v.dom){alert("Le domaine et la fonction testée sont obligatoires.");return}
+if(edit){Object.assign(edit,v)}else{const same=T.find(t=>t.dom===v.dom);let px=same?same.id.split("-")[0]:($("#f_pre_id").value.trim().toUpperCase()||v.dom.slice(0,3).toUpperCase());
+const n=Math.max(0,...T.filter(t=>t.id.startsWith(px+"-")).map(t=>parseInt(t.id.split("-")[1])||0))+1;
+const lot=same?same.lot:"Lot 1";T.push(fix({...v,id:px+"-"+String(n).padStart(2,"0"),lot,st:"Non testé"}));open.add(px+"-"+String(n).padStart(2,"0"))}
+save();$("#ov").classList.remove("on");render()};
+load();render();
+</script></body></html>
